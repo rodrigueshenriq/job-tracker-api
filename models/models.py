@@ -2,9 +2,10 @@
 from sqlalchemy import Column, Integer, String
 from database.database import Base
 
-class TodoItem(Base):
-    __tablename__ = "todos"
+class JobApplication(Base):
+    __tablename__ = "applications"
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    description = Column(String, index=True)
-    status = Column(String, index=True)
+    company = Column(String, index=True)
+    position = Column(String, index=True)
+    status = Column(String, index=True, default="applied")
+    notes = Column(String, nullable=True)
