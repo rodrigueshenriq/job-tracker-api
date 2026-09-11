@@ -1,12 +1,12 @@
 
 from fastapi import FastAPI
 from database.database import Base, engine
-from routers import todo
+from routers import applications
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-app.include_router(todo.router, prefix="/applications", tags=["Job Applications"])
+app.include_router(applications.router, prefix="/applications", tags=["Job Applications"])
 
 @app.get("/")
 def read_root():
