@@ -18,7 +18,7 @@ O Job Tracker API permite registrar e acompanhar candidaturas a vagas de emprego
 
 ## Requisitos
 
-- Python 3.10+
+- Python 3.10 ou 3.11 (com as versões atuais de `requirements.txt`)
 - pip
 
 ## Instalação
@@ -58,6 +58,16 @@ uvicorn main:app --reload
 ```
 
 Acesse a documentação em: http://127.0.0.1:8000/docs
+
+## Testes
+
+Com as dependências de `requirements.txt` instaladas em um ambiente Python 3.10 ou 3.11, execute:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Os testes usam SQLite em memória e não acessam `job_tracker.db`.
 
 ## Estrutura do Projeto
 
