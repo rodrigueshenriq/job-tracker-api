@@ -114,7 +114,8 @@ class AgentReadToolsTests(unittest.TestCase):
         paths = app.openapi()["paths"]
         self.assertEqual(
             {path for path in paths if path.startswith("/agent")},
-            {"/agent/candidate-profile", "/agent/application-history"},
+            {"/agent/candidate-profile", "/agent/application-history",
+             "/agent/application-results/prepare", "/agent/application-results/confirm"},
         )
         self.assertEqual(set(paths["/agent/candidate-profile"]), {"get"})
         self.assertEqual(set(paths["/agent/application-history"]), {"get"})

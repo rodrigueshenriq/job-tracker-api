@@ -1,9 +1,9 @@
-"""Response contracts for the read-only agent demo routes."""
+"""Response contracts for the agent demo and human approval boundary."""
 
 from datetime import date
-from typing import List
+from typing import List, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CandidateProfile(BaseModel):
@@ -23,3 +23,33 @@ class ApplicationHistoryItem(BaseModel):
 
 class ApplicationHistory(BaseModel):
     applications: List[ApplicationHistoryItem]
+
+
+class PrepareApplicationResult(BaseModel):
+    application_id: Literal["demo-001", "demo-002"]
+    result: Literal["interview", "rejected", "offer", "withdrawn"]
+
+    class Config:
+        extra = "forbid"
+
+
+class ApplicationResultSummary(BaseModel):
+    application_id: str
+    result: str
+
+
+class PreparedApplicationResult(BaseModel):
+    approval_token: str
+    summary: ApplicationResultSummary
+    expires_in_seconds: int
+
+
+class ConfirmApplicationResult(BaseModel):
+    approval_token: str = Field(..., min_length=1)
+
+    class Config:
+        extra = "forbid"
+
+
+class RecordedApplicationResult(ApplicationResultSummary):
+    pass

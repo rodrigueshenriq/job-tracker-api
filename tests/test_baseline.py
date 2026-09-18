@@ -73,7 +73,8 @@ class BaselineTests(unittest.TestCase):
     def test_expected_agent_routes_are_present(self):
         self.assertEqual(
             {path for path in app.openapi()["paths"] if path.startswith("/agent")},
-            {"/agent/candidate-profile", "/agent/application-history"},
+            {"/agent/candidate-profile", "/agent/application-history",
+             "/agent/application-results/prepare", "/agent/application-results/confirm"},
         )
 
 

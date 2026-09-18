@@ -49,6 +49,7 @@ DATABASE_URL=sqlite:///./job_tracker.db
 APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_PROJECT_ID=job-tracker-api
 APPWRITE_API_KEY=
+HUMAN_APPROVAL_KEY=
 ```
 
 ## Execução
@@ -99,8 +100,18 @@ job-tracker-api/
 | DELETE | `/applications/{id}` | Excluir candidatura |
 | GET | `/agent/candidate-profile` | Perfil fictício para demonstração |
 | GET | `/agent/application-history` | Histórico fictício para demonstração |
+| POST | `/agent/application-results/prepare` | Solicita revisão humana, sem gravar resultado |
+| POST | `/agent/application-results/confirm` | Confirmação exclusiva da aplicação/UI humana |
 
-As rotas `/agent` usam dados fixos e fictícios, independentes do banco SQLite. Nesta etapa, elas oferecem apenas leitura.
+As rotas `/agent` usam apenas dados fixos e fictícios, independentes do banco SQLite real.
+
+### Aprovação humana para resultados
+
+`POST /agent/application-results/prepare` valida um `application_id` de demonstração e um resultado permitido (`interview`, `rejected`, `offer` ou `withdrawn`). Ele cria uma solicitação pendente, devolve um token opaco e o resumo a ser revisado, sem gravar o resultado. A solicitação expira após 10 minutos.
+
+Depois da revisão e aprovação humana, somente a aplicação/UI do operador deve chamar `POST /agent/application-results/confirm` com o token e o cabeçalho `X-Human-Approval-Key`. Configure `HUMAN_APPROVAL_KEY` fora do código e não compartilhe essa credencial com o agente. A confirmação falha se a credencial não estiver configurada ou for inválida; tokens inválidos, expirados ou já usados também falham. Os resultados confirmados ficam apenas na memória do processo de demonstração e se perdem ao reiniciar; as respostas GET fictícias continuam fixas.
+
+A confirmação é a fronteira controlada pela aplicação/UI humana e **não deve ser disponibilizada ao agente como ferramenta**. O OpenAPI padrão da aplicação documenta a rota administrativa; para a futura ferramenta do agente, use somente `build_agent_tool_openapi()` em `agent_tool_openapi.py`. Essa especificação restrita contém os dois GETs e `prepare_application_result`, sem `confirm_application_result` nem as rotas CRUD. Ainda não há integração com Foundry.
 
 ## Licença
 
