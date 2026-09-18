@@ -97,6 +97,10 @@ job-tracker-api/
 | GET | `/applications/{id}` | Buscar candidatura |
 | PUT | `/applications/{id}` | Atualizar candidatura |
 | DELETE | `/applications/{id}` | Excluir candidatura |
+| GET | `/agent/candidate-profile` | Perfil fictício para demonstração |
+| GET | `/agent/application-history` | Histórico fictício para demonstração |
+
+As rotas `/agent` usam dados fixos e fictícios, independentes do banco SQLite. Nesta etapa, elas oferecem apenas leitura.
 
 ## Licença
 

@@ -56,6 +56,7 @@ class BaselineTests(unittest.TestCase):
             (method.upper(), path)
             for path, methods in app.openapi()["paths"].items()
             for method in methods
+            if path == "/" or path.startswith("/applications/")
         }
         self.assertEqual(
             operations,
@@ -69,9 +70,10 @@ class BaselineTests(unittest.TestCase):
             },
         )
 
-    def test_agent_routes_are_absent(self):
-        self.assertFalse(
-            any(path.startswith("/agent") for path in app.openapi()["paths"])
+    def test_expected_agent_routes_are_present(self):
+        self.assertEqual(
+            {path for path in app.openapi()["paths"] if path.startswith("/agent")},
+            {"/agent/candidate-profile", "/agent/application-history"},
         )
 
 
