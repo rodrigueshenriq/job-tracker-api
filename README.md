@@ -60,6 +60,16 @@ uvicorn main:app --reload
 
 Acesse a documentação em: http://127.0.0.1:8000/docs
 
+## Execução com Docker
+
+```bash
+docker build -t job-tracker-api .
+docker run --rm -p 8000:8000 -e PORT=8000 job-tracker-api
+```
+
+O contêiner inicia `uvicorn main:app` em `0.0.0.0` e usa a variável de ambiente
+`PORT` (padrão `8000`), adequada para configuração no Azure Container Apps.
+
 ## Testes
 
 Com as dependências de `requirements.txt` instaladas em um ambiente Python 3.10 ou 3.11, execute:
