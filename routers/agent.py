@@ -5,7 +5,8 @@ from copy import deepcopy
 from secrets import compare_digest
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Security
+from fastapi.security import APIKeyHeader
 
 from agent_store import PENDING_TTL_SECONDS, confirm_result, prepare_result
 from demo_data import APPLICATION_HISTORY, CANDIDATE_PROFILE
@@ -18,8 +19,21 @@ from schemas.agent import (
     RecordedApplicationResult,
 )
 
+agent_api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
+
+
+def require_agent_api_key(
+    api_key: Optional[str] = Security(agent_api_key_header),
+):
+    configured_key = os.getenv("AGENT_API_KEY")
+    if not configured_key:
+        raise HTTPException(status_code=503, detail="Agent API access is not configured")
+    if not api_key or not compare_digest(api_key, configured_key):
+        raise HTTPException(status_code=401, detail="Valid agent API credential required")
+
+
 # Only tool_router is included in the curated agent OpenAPI document.
-tool_router = APIRouter()
+tool_router = APIRouter(dependencies=[Depends(require_agent_api_key)])
 # confirmation_router belongs exclusively to the trusted human/UI surface.
 confirmation_router = APIRouter()
 

@@ -21,14 +21,17 @@ from routers.applications import (  # noqa: E402
 from schemas.schemas import ApplicationCreate, ApplicationUpdate  # noqa: E402
 
 TEST_APPROVAL_KEY = token_urlsafe(32)
+TEST_AGENT_API_KEY = os.environ.setdefault("AGENT_API_KEY", token_urlsafe(32))
 
 
-async def request_json(method, path, payload=None, approval_key=None):
+async def request_json(method, path, payload=None, approval_key=None, agent_key=TEST_AGENT_API_KEY):
     messages = []
     body = json.dumps(payload).encode() if payload is not None else b""
     headers = [(b"content-type", b"application/json")]
     if approval_key is not None:
         headers.append((b"x-human-approval-key", approval_key.encode()))
+    if agent_key is not None:
+        headers.append((b"x-api-key", agent_key.encode()))
 
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
@@ -93,6 +96,13 @@ class ApprovalFlowTests(unittest.TestCase):
         self.assertEqual(agent_store._recorded, {})
         self.assertEqual(len(agent_store._pending), 1)
 
+    def test_prepare_requires_agent_key(self):
+        payload = {"application_id": "demo-001", "result": "offer"}
+        with patch.dict(os.environ, {"AGENT_API_KEY": TEST_AGENT_API_KEY}):
+            self.assertEqual(asyncio.run(request_json("POST", "/agent/application-results/prepare", payload, agent_key=None))[0], 401)
+            self.assertEqual(asyncio.run(request_json("POST", "/agent/application-results/prepare", payload, agent_key="wrong"))[0], 401)
+            self.assertEqual(asyncio.run(request_json("POST", "/agent/application-results/prepare", payload))[0], 200)
+
     def test_human_confirmation_records_once_and_replay_is_rejected(self):
         token = self.prepare()[1]["approval_token"]
         with patch.dict(os.environ, {"HUMAN_APPROVAL_KEY": TEST_APPROVAL_KEY}):
@@ -145,7 +155,8 @@ class ApprovalFlowTests(unittest.TestCase):
             self.assertEqual(delete_application(created.id, db), {"detail": "Application deleted"})
 
     def test_curated_openapi_excludes_confirmation_and_crud(self):
-        paths = build_agent_tool_openapi()["paths"]
+        schema = build_agent_tool_openapi()
+        paths = schema["paths"]
         self.assertEqual(
             {path: list(operations) for path, operations in paths.items()},
             {
@@ -157,6 +168,14 @@ class ApprovalFlowTests(unittest.TestCase):
         self.assertEqual(paths["/agent/application-results/prepare"]["post"]["operationId"], "prepare_application_result")
         self.assertNotIn("/agent/application-results/confirm", paths)
         self.assertEqual(app.openapi()["paths"]["/agent/application-results/confirm"]["post"]["operationId"], "confirm_application_result")
+        self.assertEqual(
+            schema["components"]["securitySchemes"]["APIKeyHeader"],
+            {"type": "apiKey", "in": "header", "name": "x-api-key"},
+        )
+        for operations in paths.values():
+            for operation in operations.values():
+                self.assertEqual(operation["security"], [{"APIKeyHeader": []}])
+        self.assertNotIn("security", app.openapi()["paths"]["/agent/application-results/confirm"]["post"])
 
 
 if __name__ == "__main__":

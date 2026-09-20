@@ -2,16 +2,19 @@ import asyncio
 import json
 import os
 import unittest
+from secrets import token_urlsafe
+from unittest.mock import patch
 
 # main.py creates tables during import. Never use the repository's SQLite file.
 os.environ["DATABASE_URL"] = "sqlite://"
+TEST_AGENT_API_KEY = os.environ.setdefault("AGENT_API_KEY", token_urlsafe(32))
 
 from database.database import SessionLocal, engine  # noqa: E402
 from main import app  # noqa: E402
 from models.models import JobApplication  # noqa: E402
 
 
-async def get_json(path):
+async def get_json(path, agent_key=TEST_AGENT_API_KEY):
     messages = []
 
     async def receive():
@@ -30,7 +33,7 @@ async def get_json(path):
         "raw_path": path.encode(),
         "query_string": b"",
         "root_path": "",
-        "headers": [],
+        "headers": [(b"x-api-key", agent_key.encode())] if agent_key is not None else [],
         "client": ("testclient", 0),
         "server": ("testserver", 80),
     }
@@ -44,6 +47,17 @@ async def get_json(path):
 
 
 class AgentReadToolsTests(unittest.TestCase):
+    def test_agent_key_is_required_and_validated(self):
+        with patch.dict(os.environ, {"AGENT_API_KEY": TEST_AGENT_API_KEY}):
+            self.assertEqual(asyncio.run(get_json("/agent/candidate-profile", None))[0], 401)
+            self.assertEqual(asyncio.run(get_json("/agent/candidate-profile", "wrong"))[0], 401)
+            self.assertEqual(asyncio.run(get_json("/agent/candidate-profile"))[0], 200)
+
+        with patch.dict(os.environ, {}, clear=True):
+            status, body = asyncio.run(get_json("/agent/candidate-profile"))
+            self.assertEqual(status, 503)
+            self.assertNotIn(TEST_AGENT_API_KEY, json.dumps(body))
+
     def test_candidate_profile_is_fixed_and_fictional(self):
         status, profile = asyncio.run(get_json("/agent/candidate-profile"))
         self.assertEqual(status, 200)
