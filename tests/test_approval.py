@@ -180,6 +180,14 @@ class ApprovalFlowTests(unittest.TestCase):
 
     def test_curated_openapi_excludes_confirmation_and_crud(self):
         schema = build_agent_tool_openapi()
+        self.assertEqual(
+            schema["servers"],
+            [
+                {
+                    "url": "https://job-agent-api.lemoncoast-97f1175c.brazilsouth.azurecontainerapps.io"
+                }
+            ],
+        )
         paths = schema["paths"]
         self.assertEqual(
             {path: list(operations) for path, operations in paths.items()},
