@@ -1,90 +1,100 @@
 # Job Application Agent
 
-Projeto de engenharia de software e IA que integra uma API Python/FastAPI ao Microsoft Foundry para consultar informações fictícias de candidaturas e preparar um resultado de candidatura para revisão humana.
+Agente de IA para consultar dados fictícios de candidaturas e preparar atualizações de resultado sem ultrapassar a fronteira de decisão humana.
 
-O projeto nasceu como um CRUD de acompanhamento de candidaturas e evoluiu para demonstrar um agente com ferramentas OpenAPI autenticadas, escopo mínimo de acesso e uma fronteira explícita entre automação e decisão humana.
+O projeto combina **Microsoft Foundry**, **gpt-5-mini**, uma API **FastAPI** executada no **Azure Container Apps** e uma toolbox OpenAPI de menor privilégio. O agente pode consultar o perfil, consultar o histórico e preparar um resultado; a confirmação final permanece deliberadamente fora de suas ferramentas.
 
-## O que foi construído
+## Visão rápida
 
-- Um agente no Microsoft Foundry integrado a uma API FastAPI por OpenAPI.
-- Três operações autenticadas para consultar perfil, consultar histórico e preparar um resultado.
-- Uma confirmação separada, indisponível ao agente e protegida por credencial humana própria.
-- Uma API conteinerizada, publicada no GHCR pelo GitHub Actions e executada no Azure Container Apps.
+| Problema | Solução implementada |
+|---|---|
+| Um agente precisa consultar contexto e preparar ações sem receber acesso irrestrito à API. | Uma especificação OpenAPI curada expõe somente três operações autenticadas. |
+| Uma atualização de resultado não deve ser concluída apenas por decisão do modelo. | A preparação gera uma solicitação pendente; uma credencial humana separada é exigida para confirmar. |
+| Build e publicação não devem avançar com regressões conhecidas. | O GitHub Actions executa os 19 testes antes de construir e publicar a imagem no GHCR. |
 
-## Visão geral
+**Ambiente demonstrado:**
 
-O `job-application-agent` usa uma especificação OpenAPI curada para acessar apenas três operações da API. A ferramenta não recebe acesso ao CRUD completo nem à operação de confirmação.
-
-No ambiente de demonstração atual:
-
-- o agente `job-application-agent` está configurado no Microsoft Foundry;
-- a ferramenta ativa é `job-application-tools-v3`;
-- a API FastAPI é executada no Container App `job-agent-api`, no Azure Container Apps;
-- a imagem de container é construída e publicada no GitHub Container Registry (GHCR) pelo GitHub Actions;
-- a conexão do projeto Foundry autentica as chamadas com o cabeçalho HTTP `x-api-key`.
-
-O perfil e o histórico usados pelo agente são fixos e fictícios. Eles não leem o banco SQLite utilizado pelo CRUD original. A preparação e a confirmação mantêm estado temporário em memória.
+- agente `job-application-agent`, versão **11**;
+- modelo **gpt-5-mini**;
+- toolbox `job-application-tools-v3`, versão **3**;
+- API FastAPI no Azure Container Apps;
+- imagem publicada no GitHub Container Registry (GHCR).
 
 ## Arquitetura
 
 ```mermaid
 flowchart LR
-    F[Microsoft Foundry] --> A[Job Application Agent]
-    A --> T[OpenAPI Tool]
-    T --> C[Conexão autenticada]
+    U[Usuário] --> F[Microsoft Foundry]
+    F --> A[job-application-agent v11<br/>gpt-5-mini]
+    A --> T[job-application-tools-v3 v3<br/>OpenAPI curado]
+    T -->|x-api-key| API[FastAPI<br/>Azure Container Apps]
 
-    subgraph API[FastAPI no Azure Container Apps]
-        P[Consultar perfil]
-        H[Consultar histórico]
-        R[Preparar resultado]
-        X[Rota de confirmação]
-    end
+    API --> P[Consultar perfil]
+    API --> H[Consultar histórico]
+    API --> R[Preparar resultado pendente]
 
-    C --> P
-    C --> H
-    C --> R
-    U[Operador ou aplicação humana] -->|X-Human-Approval-Key| X
+    O[Fluxo humano autorizado] -->|X-Human-Approval-Key| C[Confirmar resultado]
+    R -. token opaco e temporário .-> C
 ```
 
-O fluxo do agente e o fluxo de confirmação usam credenciais diferentes:
+O perfil e o histórico da demonstração são fixos e fictícios. Eles não consultam o banco SQLite do CRUD que originou o projeto. Solicitações pendentes e resultados confirmados permanecem em memória.
 
-- `AGENT_API_KEY`: autoriza somente as rotas incluídas no OpenAPI curado e é enviada como `x-api-key` pela conexão do Foundry;
-- `HUMAN_APPROVAL_KEY`: autoriza a confirmação final e deve permanecer apenas na aplicação ou no ambiente controlado pelo operador humano.
+## Segurança e human-in-the-loop
 
-## Ferramentas disponíveis para o agente
+A separação de autoridade é aplicada na superfície da API, não apenas no prompt:
 
-A função `build_agent_tool_openapi()`, em `agent_tool_openapi.py`, gera o documento entregue ao Microsoft Foundry. Ele contém exatamente estas operações:
+- `AGENT_API_KEY` autentica as três rotas entregues ao Foundry por meio do cabeçalho `x-api-key`;
+- `HUMAN_APPROVAL_KEY` autentica exclusivamente a confirmação final por meio de `X-Human-Approval-Key`;
+- as duas credenciais precisam ser diferentes;
+- `confirm_application_result` existe na API principal, mas é excluída do OpenAPI entregue ao agente;
+- o token criado na preparação é opaco, expira em 10 minutos e não autoriza uma confirmação por si só;
+- tokens inválidos, expirados ou já utilizados são rejeitados.
 
-| Operação | Método e rota | Responsabilidade |
+### Ferramentas disponíveis para o agente
+
+`build_agent_tool_openapi()`, em `agent_tool_openapi.py`, cria uma especificação com exatamente estas operações:
+
+| Operação | Rota | Responsabilidade |
 |---|---|---|
-| `get_candidate_profile` | `GET /agent/candidate-profile` | Retorna um perfil profissional fictício para a demonstração. |
-| `get_application_history` | `GET /agent/application-history` | Retorna um histórico fictício de candidaturas. |
-| `prepare_application_result` | `POST /agent/application-results/prepare` | Prepara um resultado para revisão, sem confirmá-lo. |
+| `get_candidate_profile` | `GET /agent/candidate-profile` | Retorna o perfil profissional fictício. |
+| `get_application_history` | `GET /agent/application-history` | Retorna o histórico fictício de candidaturas. |
+| `prepare_application_result` | `POST /agent/application-results/prepare` | Prepara `interview`, `rejected`, `offer` ou `withdrawn` para revisão humana. |
 
-Todas exigem uma `AGENT_API_KEY` válida por meio do cabeçalho HTTP `x-api-key`. Se a credencial não estiver configurada, a API mantém as ferramentas indisponíveis; credenciais ausentes ou inválidas são recusadas.
+`confirm_application_result` (`POST /agent/application-results/confirm`) é deliberadamente ausente dessa especificação. O agente não tem uma ferramenta capaz de finalizar a atualização.
 
-### Operação deliberadamente excluída
+## Demonstração real
 
-`confirm_application_result` (`POST /agent/application-results/confirm`) **não é disponibilizada ao agente**.
+A execução abaixo usa `demo-001`, uma candidatura fictícia da **Fictional Data Studio** para **Backend Developer**, cujo estado verificado era `interview`. O agente prepara `offer`, informa que a atualização permanece pendente e declara que somente um humano autorizado pode confirmá-la.
 
-O agente pode preparar uma ação, mas não pode executar sozinho a confirmação final. A preparação cria uma solicitação pendente com um token opaco e validade de 10 minutos. Depois da revisão, uma aplicação ou um operador confiável precisa chamar a rota de confirmação com:
+![Playground do Microsoft Foundry mostrando o agente versão 11, a candidatura demo-001 em interview, o resultado offer preparado e a exigência de confirmação humana](docs/portfolio/foundry-evidence/01-agent-playground-offer-human-approval.png)
 
-- o token da solicitação preparada; e
-- a credencial independente `HUMAN_APPROVAL_KEY`, enviada no cabeçalho HTTP `X-Human-Approval-Key`.
+### Configuração do agente
 
-Tokens inválidos, expirados ou já utilizados são rejeitados. O token de preparação, isoladamente, não autoriza a confirmação.
+A tela de detalhes registra o `job-application-agent` em execução e a versão ativa 11.
 
-## Tecnologias
+![Detalhes do Microsoft Foundry mostrando o job-application-agent em execução e a versão ativa 11](docs/portfolio/foundry-evidence/02-agent-configuration-version-11.png)
+
+### Toolbox e integração OpenAPI
+
+A toolbox `job-application-tools-v3` v3 reúne a ferramenta OpenAPI usada pelo agente. Sua descrição explicita o acesso ao perfil fictício, ao histórico e à preparação sujeita a aprovação humana; o exemplo de integração mostra a conexão MCP e o deployment `gpt-5-mini`.
+
+![Microsoft Foundry mostrando a toolbox job-application-tools-v3 versão 3, a ferramenta OpenAPI e o exemplo de integração MCP com gpt-5-mini](docs/portfolio/foundry-evidence/03-toolbox-v3-openapi-human-approval.png)
+
+### Integração contínua
+
+O workflow `Test, build and publish container image` instala as dependências, executa a suíte e somente então configura o build, autentica no GHCR e publica a imagem.
+
+![GitHub Actions mostrando execuções concluídas com sucesso do workflow de testes, build e publicação da imagem](docs/portfolio/foundry-evidence/04-github-actions-successful-workflows.png)
+
+## Stack
 
 - Python 3.11 no container
-- FastAPI
-- Pydantic
-- SQLAlchemy e SQLite
-- Microsoft Foundry
-- OpenAPI
+- FastAPI, Pydantic e SQLAlchemy
+- SQLite para o CRUD original
+- Microsoft Foundry e gpt-5-mini
+- OpenAPI e MCP toolbox
 - Azure Container Apps
-- Docker
-- GitHub Actions e GitHub Container Registry
+- Docker, GHCR e GitHub Actions
 - `unittest`
 
 ## Estrutura relevante
@@ -92,9 +102,11 @@ Tokens inválidos, expirados ou já utilizados são rejeitados. O token de prepa
 ```text
 job-tracker-api/
 ├── .github/workflows/
-│   └── publish-container.yml  # Build e publicação da imagem no GHCR
+│   └── publish-container.yml  # Testes antes do build e publicação no GHCR
 ├── database/
 │   └── database.py            # Engine e sessões SQLAlchemy
+├── docs/portfolio/
+│   └── foundry-evidence/      # Evidências visuais reais do case
 ├── models/
 │   └── models.py              # Modelo do CRUD original
 ├── routers/
@@ -104,14 +116,14 @@ job-tracker-api/
 │   ├── agent.py               # Contratos do agente e da aprovação
 │   └── schemas.py             # Contratos do CRUD
 ├── tests/
-│   ├── test_agent.py          # Autenticação, dados e operações do agente
-│   ├── test_approval.py       # Preparação e aprovação humana
-│   └── test_baseline.py       # Baseline da aplicação e das rotas
-├── agent_store.py             # Estado temporário das solicitações preparadas
-├── agent_tool_openapi.py      # Geração do OpenAPI de menor privilégio
+│   ├── test_agent.py
+│   ├── test_approval.py
+│   └── test_baseline.py
+├── agent_store.py             # Estado temporário em memória
+├── agent_tool_openapi.py      # OpenAPI de menor privilégio
 ├── demo_data.py               # Dados fictícios da demonstração
 ├── Dockerfile
-├── main.py                    # Entrypoint FastAPI
+├── main.py
 └── requirements.txt
 ```
 
@@ -146,15 +158,13 @@ Instale as dependências:
 pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` local, sem versioná-lo:
+Crie um `.env` local e não o versione:
 
 ```env
 DATABASE_URL=sqlite:///./job_tracker.db
-AGENT_API_KEY=<defina-uma-credencial-local>
-HUMAN_APPROVAL_KEY=<defina-outra-credencial-local>
+AGENT_API_KEY=<credencial-local-do-agente>
+HUMAN_APPROVAL_KEY=<credencial-local-humana-diferente>
 ```
-
-As duas credenciais devem ter valores diferentes. Não use os placeholders acima em um ambiente compartilhado ou publicado.
 
 Inicie a API:
 
@@ -162,7 +172,7 @@ Inicie a API:
 uvicorn main:app --reload
 ```
 
-A documentação interativa fica disponível em `http://127.0.0.1:8000/docs`.
+A documentação interativa estará em `http://127.0.0.1:8000/docs`.
 
 ### Docker
 
@@ -174,78 +184,60 @@ docker run --rm -p 8000:8000 \
   job-tracker-api
 ```
 
-O exemplo acima usa valores locais ilustrativos, que devem ser substituídos. O container executa a aplicação em `0.0.0.0` e usa a variável `PORT`, com valor padrão `8000`.
+O container escuta em `0.0.0.0` e usa `PORT`, com valor padrão `8000`.
 
-## Testes automatizados
+## Testes e CI
 
-Execute a suíte com:
+Execute os **19 testes** com:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Os testes usam SQLite em memória e não acessam `job_tracker.db`. A suíte cobre, entre outros comportamentos:
+A suíte usa SQLite em memória e verifica, entre outros pontos:
 
-- exigência e validação da credencial do agente;
-- isolamento entre os dados fictícios e o banco do CRUD;
-- conteúdo e escopo do OpenAPI curado;
-- preparação sem gravação do resultado;
+- autenticação e isolamento das rotas do agente;
+- dados fictícios independentes do CRUD;
+- escopo exato do OpenAPI curado;
+- preparação sem gravação definitiva;
 - confirmação com credencial humana separada;
 - expiração, uso único e rejeição de tokens inválidos;
-- preservação das rotas CRUD que originaram o projeto.
+- preservação das rotas CRUD existentes.
 
-## Demonstração
-
-No ambiente de demonstração documentado, `get_candidate_profile` já foi executada com sucesso pelo caminho agente no Foundry → ferramenta OpenAPI → conexão autenticada → API FastAPI. Essa validação confirma especificamente a operação de consulta do perfil.
-
-As demais etapas abaixo formam o roteiro proposto para uma demonstração completa do fluxo:
-
-1. pedir ao agente o perfil do candidato;
-2. consultar o histórico fictício de candidaturas;
-3. solicitar a preparação de um resultado permitido;
-4. mostrar que o agente não possui a operação de confirmação;
-5. revisar e confirmar a solicitação por um fluxo humano separado.
-
-O roteiro permite demonstrar as três operações do agente e a fronteira de confirmação humana sem atribuir ao agente autoridade para concluir a ação sensível.
+No GitHub Actions, essa suíte é executada antes do build e da publicação da imagem. Uma falha interrompe o job antes dessas etapas.
 
 ## Decisões de engenharia
 
-### OpenAPI curado
+### Menor privilégio por construção
 
-A aplicação possui outras rotas, mas o agente recebe uma especificação construída apenas com `tool_router`. Isso evita depender somente de instruções de prompt para controlar acesso.
+O OpenAPI do agente é gerado a partir de um router dedicado. O CRUD e a confirmação humana não entram no documento, reduzindo o impacto de instruções inadequadas ou de uma decisão incorreta do modelo.
 
-### Dados fictícios e isolados
+### Dados de demonstração isolados
 
-O perfil e o histórico da demonstração ficam em `demo_data.py`. As ferramentas não consultam as candidaturas armazenadas pelo CRUD, reduzindo o risco de exposição acidental de dados reais.
+O perfil e o histórico ficam em `demo_data.py`. As ferramentas do agente não leem candidaturas do SQLite, evitando apresentar dados do CRUD como se fossem contexto verificado do agente.
 
-### Escopo controlado
+### Preparação não é confirmação
 
-O objetivo é demonstrar integração de agente, autenticação e aprovação humana. O projeto preserva o CRUD como parte de sua evolução, mas não amplia o escopo com funcionalidades que não contribuam para essa demonstração.
+`prepare_application_result` cria estado pendente. Apenas o fluxo separado, autenticado com a credencial humana, pode convertê-lo em resultado confirmado.
 
-## Limitações conscientes
+## Limitações
 
-- Solicitações pendentes e resultados confirmados são mantidos em memória e se perdem quando o processo reinicia.
-- O perfil e o histórico acessados pelo agente são fixos e fictícios.
-- A confirmação humana é uma rota de API protegida por credencial; este repositório não inclui uma interface de aprovação.
-- O CRUD usa SQLite e permanece separado dos dados da demonstração do agente.
-- A configuração dos recursos do Microsoft Foundry e do Azure pertence ao ambiente de demonstração e não é reproduzida integralmente neste repositório.
+- O estado de preparação e confirmação é mantido em memória e se perde quando o processo reinicia.
+- O perfil e o histórico do agente são fixtures fictícias e imutáveis.
+- O repositório não inclui uma interface de aprovação humana; a confirmação é uma rota protegida da API.
+- O CRUD usa SQLite e permanece separado dos dados demonstrados pelo agente.
+- Não há persistência distribuída, fila, trilha de auditoria durável ou gestão multiusuário para aprovações.
+- A infraestrutura do Microsoft Foundry e do Azure usada na demonstração não é provisionada por este repositório.
+- A demonstração prova o fluxo técnico; não mede qualidade de recrutamento, produtividade ou impacto de negócio.
 
-Essas limitações são compatíveis com o objetivo atual de portfólio e devem ser consideradas antes de qualquer uso além da demonstração.
+## Evolução e origem
 
-## Evolução do projeto
+O repositório começou a partir de um exercício educacional de CRUD com FastAPI realizado durante estudos na DIO, a partir de um código-base de terceiros. Depois, o domínio foi alterado para acompanhamento de candidaturas e a implementação evoluiu de forma independente para incluir testes, autenticação, containerização, Azure Container Apps, Microsoft Foundry e human-in-the-loop.
 
-O histórico do repositório registra a transformação incremental do projeto:
+Essa referência descreve apenas a origem histórica do exercício. **IBM e DIO não são apresentadas como autoras, mantenedoras ou endossantes da implementação atual.**
 
-1. API CRUD baseada no projeto FastAPI Todo original;
-2. adaptação para o domínio de candidaturas;
-3. criação de testes de baseline;
-4. inclusão de ferramentas de consulta para o agente;
-5. implementação do fluxo de preparação e aprovação humana;
-6. containerização, publicação no GHCR e integração com Microsoft Foundry e Azure Container Apps;
-7. proteção das ferramentas por chave de API.
+O código-base inicial deriva do projeto [FastAPI-CRUD-Todo, de lymanny](https://github.com/lymanny/FastAPI-CRUD-Todo). A evolução atual e suas integrações pertencem a este repositório.
 
-## Licença e origem
+## Licença
 
-Distribuído sob a licença MIT. Consulte [LICENSE](LICENSE).
-
-O projeto evoluiu a partir do [FastAPI-CRUD-Todo](https://github.com/lymanny/FastAPI-CRUD-Todo), de [lymanny](https://lymanny.onrender.com), usado como ponto de partida para o domínio de candidaturas.
+Distribuído sob a [licença MIT](LICENSE).
