@@ -26,8 +26,18 @@ class ApplicationHistory(BaseModel):
 
 
 class PrepareApplicationResult(BaseModel):
-    application_id: Literal["demo-001", "demo-002"]
-    result: Literal["interview", "rejected", "offer", "withdrawn"]
+    application_id: Literal["demo-001", "demo-002"] = Field(
+        ...,
+        description="Use exactly one of the enumerated application IDs.",
+    )
+    result: Literal["interview", "rejected", "offer", "withdrawn"] = Field(
+        ...,
+        description=(
+            "Use only one of the enumerated values: interview, rejected, offer, or "
+            "withdrawn. Do not include explanations, sentences, or additional notes. "
+            "Map an 'accepted' outcome to offer."
+        ),
+    )
 
     class Config:
         extra = "forbid"

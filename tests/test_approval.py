@@ -96,6 +96,18 @@ class ApprovalFlowTests(unittest.TestCase):
         self.assertEqual(agent_store._recorded, {})
         self.assertEqual(len(agent_store._pending), 1)
 
+    def test_prepare_accepts_every_allowed_result(self):
+        for result in ("interview", "rejected", "offer", "withdrawn"):
+            with self.subTest(result=result):
+                status, prepared = self.prepare(result=result)
+                self.assertEqual(status, 200)
+                self.assertEqual(
+                    prepared["summary"],
+                    {"application_id": "demo-001", "result": result},
+                )
+                with agent_store._lock:
+                    agent_store._pending.clear()
+
     def test_prepare_requires_agent_key(self):
         payload = {"application_id": "demo-001", "result": "offer"}
         with patch.dict(os.environ, {"AGENT_API_KEY": TEST_AGENT_API_KEY}):
@@ -133,10 +145,22 @@ class ApprovalFlowTests(unittest.TestCase):
         for payload in (
             {"application_id": "unknown", "result": "offer"},
             {"application_id": "demo-001", "result": "unknown"},
+            {"application_id": "demo-001", "result": "accepted"},
+            {
+                "application_id": "demo-001",
+                "result": (
+                    "Change status to 'accepted' for application demo-001 at Fictional "
+                    "Data Studio. Note: This is a prepared update only; do NOT submit or "
+                    "finalize without human approval."
+                ),
+            },
             {"application_id": "demo-001", "result": "offer", "approved": True},
         ):
-            status, _ = asyncio.run(request_json("POST", "/agent/application-results/prepare", payload))
-            self.assertEqual(status, 422)
+            with self.subTest(payload=payload):
+                status, _ = asyncio.run(
+                    request_json("POST", "/agent/application-results/prepare", payload)
+                )
+                self.assertEqual(status, 422)
         self.assertEqual(agent_store._pending, {})
         self.assertEqual(agent_store._recorded, {})
 
@@ -166,6 +190,31 @@ class ApprovalFlowTests(unittest.TestCase):
             },
         )
         self.assertEqual(paths["/agent/application-results/prepare"]["post"]["operationId"], "prepare_application_result")
+        prepare_operation = paths["/agent/application-results/prepare"]["post"]
+        request_schema_ref = prepare_operation["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        request_schema_name = request_schema_ref.rsplit("/", 1)[-1]
+        request_schema = schema["components"]["schemas"][request_schema_name]
+        self.assertEqual(
+            request_schema["required"],
+            ["application_id", "result"],
+        )
+        self.assertEqual(
+            request_schema["properties"]["application_id"]["enum"],
+            ["demo-001", "demo-002"],
+        )
+        self.assertEqual(
+            request_schema["properties"]["result"]["enum"],
+            ["interview", "rejected", "offer", "withdrawn"],
+        )
+        self.assertFalse(request_schema["additionalProperties"])
+        result_description = request_schema["properties"]["result"]["description"]
+        self.assertIn(
+            "Do not include explanations, sentences, or additional notes",
+            result_description,
+        )
+        self.assertIn("Map an 'accepted' outcome to offer", result_description)
         self.assertNotIn("/agent/application-results/confirm", paths)
         self.assertEqual(app.openapi()["paths"]["/agent/application-results/confirm"]["post"]["operationId"], "confirm_application_result")
         self.assertEqual(
