@@ -4,6 +4,19 @@ Agente de IA para consultar dados fictícios de candidaturas e preparar atualiza
 
 O projeto combina **Microsoft Foundry**, **gpt-5-mini**, uma API **FastAPI** executada no **Azure Container Apps** e uma toolbox OpenAPI de menor privilégio. O agente pode consultar o perfil, consultar o histórico e preparar um resultado; a confirmação final permanece deliberadamente fora de suas ferramentas.
 
+## Demo em 60 segundos
+
+> Usuário informa que recebeu uma oferta
+> → agente identifica `demo-001`
+> → verifica a candidatura em `interview`
+> → prepara `offer`
+> → atualização permanece pendente
+> → confirmação final exige fluxo humano autorizado
+
+O agente pode consultar informações e preparar a alteração, mas não possui `confirm_application_result` entre suas ferramentas. A execução real abaixo mostra essa fronteira: o resultado fica pendente até a confirmação por um fluxo humano autenticado separadamente.
+
+![Playground do Microsoft Foundry mostrando o agente versão 11, a candidatura demo-001 em interview, o resultado offer preparado e a exigência de confirmação humana](docs/portfolio/foundry-evidence/01-agent-playground-offer-human-approval.png)
+
 ## Visão rápida
 
 | Problema | Solução implementada |
@@ -62,11 +75,7 @@ A separação de autoridade é aplicada na superfície da API, não apenas no pr
 
 `confirm_application_result` (`POST /agent/application-results/confirm`) é deliberadamente ausente dessa especificação. O agente não tem uma ferramenta capaz de finalizar a atualização.
 
-## Demonstração real
-
-A execução abaixo usa `demo-001`, uma candidatura fictícia da **Fictional Data Studio** para **Backend Developer**, cujo estado verificado era `interview`. O agente prepara `offer`, informa que a atualização permanece pendente e declara que somente um humano autorizado pode confirmá-la.
-
-![Playground do Microsoft Foundry mostrando o agente versão 11, a candidatura demo-001 em interview, o resultado offer preparado e a exigência de confirmação humana](docs/portfolio/foundry-evidence/01-agent-playground-offer-human-approval.png)
+## Evidências técnicas
 
 ### Configuração do agente
 
