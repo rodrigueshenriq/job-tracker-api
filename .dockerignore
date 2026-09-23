@@ -1,8 +1,12 @@
 .git
 .gitignore
+.azure/
+azure.yaml
 .env
 .env.*
 !.env.example
+*.key
+*.pem
 *.db
 __pycache__/
 *.py[cod]
